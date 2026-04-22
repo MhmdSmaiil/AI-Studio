@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile data stored in Firestore",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Repair": {
+      "title": "Repair Ticket",
+      "description": "Information about a device repair job",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "deviceModel": { "type": "string" },
+        "issueDescription": { "type": "string" },
+        "status": { "type": "string", "enum": ["Received", "Diagnosing", "Repairing", "Quality Check", "Ready for Pickup", "Completed"] },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"] },
+        "estimate": { "type": "number" },
+        "technicianName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "deviceModel", "status", "createdAt"]
+    },
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "Parts or retail items in stock",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "stock"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer contact and history info",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string", "description": "Hashed password or credential reference" },
+        "phone": { "type": "string" },
+        "totalRepairs": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "lastVisit": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Technician": {
+      "title": "Technician",
+      "description": "Repair staff member account",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string", "description": "Hashed password or credential reference" },
+        "specialization": { "type": "string" },
+        "role": { "type": "string", "enum": ["technician"] },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Transaction": {
+      "title": "POS Transaction",
+      "description": "Record of a sale",
+      "type": "object",
+      "properties": {
+          "total": { "type": "number" },
+          "customerName": { "type": "string" },
+          "items": { "type": "array" },
+          "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "/repairs/{repairId}": {
+      "schema": "Repair",
+      "description": "Repair tickets"
+    },
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Stock items"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer list"
+    },
+    "/technicians/{technicianId}": {
+      "schema": "Technician",
+      "description": "Staff member accounts"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Sales records"
+    }
+  }
+}

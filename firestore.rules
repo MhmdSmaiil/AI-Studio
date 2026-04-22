@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email == "mhmd.smaiil2@gmail.com" &&
+             request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Routes ---
+
+    // User Profiles
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // Repair Tickets
+    match /repairs/{repairId} {
+      // Public can check their status if they have the ID
+      allow get: if true;
+      // Admin can list all repairs and perform management
+      allow list, create, update, delete: if isAdmin();
+    }
+
+    // Inventory
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Customers
+    match /customers/{customerId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Transactions
+    match /transactions/{transactionId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Technicians
+    match /technicians/{technicianId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Admins
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+  }
+}
