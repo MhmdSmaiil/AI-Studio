@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { 
   LayoutDashboard, 
   Wrench, 
@@ -29,7 +31,13 @@ import {
   Menu,
   X,
   LogOut,
-  User
+  User,
+  Eye,
+  Calendar,
+  Phone,
+  Mail,
+  Info,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -89,11 +97,22 @@ export function AdminDashboard() {
   const [isNewTechnicianOpen, setIsNewTechnicianOpen] = useState(false);
   const [isEditTechnicianOpen, setIsEditTechnicianOpen] = useState(false);
   const [isEditRepairOpen, setIsEditRepairOpen] = useState(false);
+  const [isViewRepairOpen, setIsViewRepairOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [newTechnician, setNewTechnician] = useState({ name: "", email: "", password: "", specialization: "" });
+  const [newTechnician, setNewTechnician] = useState({ 
+    name: "", 
+    email: "", 
+    password: "", 
+    specialization: "",
+    availability: {
+      workingHours: { start: "09:00", end: "17:00" },
+      daysOff: [] as string[]
+    }
+  });
   const [editingTechnician, setEditingTechnician] = useState<any>(null);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [editingRepair, setEditingRepair] = useState<any>(null);
+  const [viewingRepair, setViewingRepair] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
     type: string;
@@ -108,6 +127,93 @@ export function AdminDashboard() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+
+  const generateInvoice = (repair: any) => {
+    const doc = new jsPDF();
+    const technicianName = technicians.find(t => t.id === repair.technicianId)?.name || "Unassigned";
+    const partsTotal = (repair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0);
+    const grandTotal = Number(repair.estimate || 0) + partsTotal;
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(33, 150, 243); // Primary color
+    doc.text("TechFix Solutions", 14, 22);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("Premium Device Repair Service", 14, 28);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("INVOICE", 160, 22);
+    doc.setFontSize(10);
+    doc.text(`ID: TF-${repair.id.slice(0, 8).toUpperCase()}`, 160, 28);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 160, 34);
+
+    // Customer Info
+    doc.setDrawColor(240);
+    doc.line(14, 45, 196, 45);
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("BILL TO:", 14, 55);
+    doc.setFont("helvetica", "normal");
+    doc.text(repair.customerName, 14, 62);
+    doc.text(`Phone: ${repair.customerPhone}`, 14, 68);
+    
+    doc.setFont("helvetica", "bold");
+    doc.text("DEVICE DETAILS:", 110, 55);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Model: ${repair.deviceModel}`, 110, 62);
+    doc.text(`S/N: ${repair.serialNumber || "N/A"}`, 110, 68);
+    doc.text(`Tech: ${technicianName}`, 110, 74);
+
+    // Table
+    const tableRows = [
+      ["Service / Labor Fee", "1", `$${repair.estimate || 0}`, `$${repair.estimate || 0}`],
+      ...(repair.items || []).map((item: any) => [
+        item.name,
+        "1",
+        `$${item.price}`,
+        `$${item.price}`
+      ])
+    ];
+
+    autoTable(doc, {
+      startY: 85,
+      head: [["Description", "Qty", "Unit Price", "Total"]],
+      body: tableRows,
+      headStyles: { fillColor: [33, 150, 243], textColor: [255, 255, 255] },
+      margin: { top: 85 },
+      styles: { fontSize: 9 }
+    });
+
+    // Summary
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary:", 140, finalY);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Parts Total:`, 140, finalY + 7);
+    doc.text(`$${partsTotal}`, 180, finalY + 7, { align: "right" });
+    doc.text(`Labor Fee:`, 140, finalY + 14);
+    doc.text(`$${repair.estimate || 0}`, 180, finalY + 14, { align: "right" });
+    
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(33, 150, 243);
+    doc.text(`GRAND TOTAL:`, 140, finalY + 25);
+    doc.text(`$${grandTotal}`, 180, finalY + 25, { align: "right" });
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.setFont("helvetica", "italic");
+    doc.text("Thank you for choosing TechFix Solutions!", 105, 280, { align: "center" });
+    doc.text("Warranty: 90 days on all replaced parts.", 105, 285, { align: "center" });
+
+    // Save
+    doc.save(`Invoice_TF_${repair.id.slice(0, 8).toUpperCase()}.pdf`);
+  };
 
   // New Repair Form State
   const [newRepair, setNewRepair] = useState({
@@ -333,6 +439,11 @@ export function AdminDashboard() {
     setIsEditRepairOpen(true);
   };
 
+  const triggerViewRepair = (repair: any) => {
+    setViewingRepair(repair);
+    setIsViewRepairOpen(true);
+  };
+
   const handleUpdateRepair = async () => {
     if (!editingRepair) return;
     try {
@@ -358,7 +469,16 @@ export function AdminDashboard() {
         createdAt: new Date().toISOString()
       });
       setIsNewTechnicianOpen(false);
-      setNewTechnician({ name: "", email: "", password: "", specialization: "" });
+      setNewTechnician({ 
+        name: "", 
+        email: "", 
+        password: "", 
+        specialization: "",
+        availability: {
+          workingHours: { start: "09:00", end: "17:00" },
+          daysOff: []
+        }
+      });
     } catch (error) {
       console.error("Error creating technician:", error);
     }
@@ -428,6 +548,43 @@ export function AdminDashboard() {
         items: prev.items.filter((i: any) => i.id !== itemId)
       }));
     }
+  };
+
+  const getTechnicianAvailabilityStatus = (tech: any) => {
+    if (tech.active === false) return { status: "Inactive", color: "text-foreground/20" };
+    
+    if (!tech.availability) return { status: "Available", color: "text-green-500" };
+    
+    const now = new Date();
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const currentDay = days[now.getDay()];
+    
+    // Format: HH:MM
+    const currentH = now.getHours();
+    const currentM = now.getMinutes();
+    const currentTimeMinutes = currentH * 60 + currentM;
+    
+    // Check days off
+    if (tech.availability.daysOff?.includes(currentDay)) {
+      return { status: "Day Off", color: "text-red-500" };
+    }
+    
+    // Check working hours
+    if (tech.availability.workingHours) {
+      const { start, end } = tech.availability.workingHours;
+      if (start && end) {
+        const [startH, startM] = start.split(":").map(Number);
+        const [endH, endM] = end.split(":").map(Number);
+        const startTimeMinutes = startH * 60 + startM;
+        const endTimeMinutes = endH * 60 + endM;
+        
+        if (currentTimeMinutes < startTimeMinutes || currentTimeMinutes > endTimeMinutes) {
+          return { status: "Out of Office", color: "text-amber-500" };
+        }
+      }
+    }
+    
+    return { status: "Available", color: "text-green-500" };
   };
 
   const renderOverview = () => {
@@ -515,14 +672,24 @@ export function AdminDashboard() {
                       {technicians.find(t => t.id === repair.technicianId)?.name || "Unassigned"}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="touch-target opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => triggerEditRepair(repair)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-primary"
+                          onClick={() => triggerViewRepair(repair)}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-foreground/40 hover:text-primary transition-colors"
+                          onClick={() => triggerEditRepair(repair)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -560,18 +727,19 @@ export function AdminDashboard() {
       <Card className="soft-card border-none overflow-hidden">
         <div className="overflow-x-auto overflow-y-hidden">
           <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border">
-              <TableHead className="pl-6">Ticket ID</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Device</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Priority</TableHead>
-              <TableHead>Technician</TableHead>
-              <TableHead>Received</TableHead>
-              <TableHead className="text-right pr-6">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent border-border">
+                <TableHead className="pl-6">Ticket ID</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Device</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Technician</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Received</TableHead>
+                <TableHead className="text-right pr-6">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
           <TableBody>
             {repairs.map((repair) => (
               <TableRow key={repair.id} className="border-border hover:bg-primary/5 group">
@@ -612,6 +780,9 @@ export function AdminDashboard() {
                 <TableCell className="text-sm font-medium text-foreground/60">
                   {technicians.find(t => t.id === repair.technicianId)?.name || "Unassigned"}
                 </TableCell>
+                <TableCell className="text-sm font-black text-primary">
+                  ${(repair.estimate || 0) + (repair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0)}
+                </TableCell>
                 <TableCell className="text-foreground/40 text-xs">
                   {repair.createdAt ? new Date(repair.createdAt.seconds * 1000).toLocaleDateString() : "Just now"}
                 </TableCell>
@@ -621,6 +792,25 @@ export function AdminDashboard() {
                       variant="ghost" 
                       size="icon" 
                       className="h-8 w-8 text-primary"
+                      onClick={() => triggerViewRepair(repair)}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    {repair.status === "Completed" && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                        title="Download Invoice"
+                        onClick={() => generateInvoice(repair)}
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-foreground/40 hover:text-primary transition-colors"
                       onClick={() => triggerEditRepair(repair)}
                     >
                       <Edit className="w-4 h-4" />
@@ -1113,7 +1303,7 @@ export function AdminDashboard() {
           <p className="text-sm md:text-base text-foreground/40 font-medium">Manage technician accounts and system access.</p>
         </div>
         <Button 
-          className="bg-primary text-white rounded-2xl px-4 md:px-6 h-10 md:h-12 font-bold shadow-xl shadow-primary/20 text-xs md:text-sm"
+          className="bg-primary text-white rounded-full px-4 md:px-6 h-10 md:h-12 font-bold shadow-none text-xs md:text-sm active:scale-95 transition-all"
           onClick={() => setIsNewTechnicianOpen(true)}
         >
           <UserPlus className="w-4 h-4 md:w-5 md:h-5 md:mr-2" />
@@ -1129,6 +1319,7 @@ export function AdminDashboard() {
               <TableHead className="pl-6 font-bold uppercase text-[10px] tracking-widest text-primary">Name</TableHead>
               <TableHead className="font-bold uppercase text-[10px] tracking-widest text-primary">Email</TableHead>
               <TableHead className="font-bold uppercase text-[10px] tracking-widest text-primary">Specialization</TableHead>
+              <TableHead className="font-bold uppercase text-[10px] tracking-widest text-primary">Availability</TableHead>
               <TableHead className="font-bold uppercase text-[10px] tracking-widest text-primary">Status</TableHead>
               <TableHead className="text-right pr-6 font-bold uppercase text-[10px] tracking-widest text-primary">Actions</TableHead>
             </TableRow>
@@ -1149,6 +1340,14 @@ export function AdminDashboard() {
                   <Badge variant="secondary" className="bg-primary/5 text-primary text-[10px] font-black uppercase">
                     {tech.specialization}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Clock className={cn("w-3 h-3", getTechnicianAvailabilityStatus(tech).color.replace("text-", "fill-"))} />
+                    <span className={cn("text-[10px] font-black uppercase tracking-wider", getTechnicianAvailabilityStatus(tech).color)}>
+                      {getTechnicianAvailabilityStatus(tech).status}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -1239,15 +1438,15 @@ export function AdminDashboard() {
       <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
         <SheetContent side="left" className="w-[85vw] p-0 bg-card border-r border-border overflow-y-auto">
           <div className="p-6 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+            <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center">
               <LayoutDashboard className="text-white w-6 h-6" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-lg leading-tight">TechFix</span>
+              <span className="font-bold text-lg leading-tight tracking-tight">TechFix</span>
               <span className="text-[10px] text-primary font-black uppercase tracking-widest leading-tight">Admin OS</span>
             </div>
           </div>
-          <nav className="px-4 space-y-2 mt-4">
+          <nav className="px-4 space-y-1.5 mt-4">
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
@@ -1256,13 +1455,13 @@ export function AdminDashboard() {
                   setIsMobileMenuOpen(false);
                 }}
                 className={cn(
-                  "w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-base font-bold transition-all duration-300",
+                  "w-full flex items-center gap-4 px-5 py-4 rounded-3xl text-base font-bold transition-all duration-200",
                   activeTab === item.id 
-                    ? "bg-primary text-white shadow-xl shadow-primary/20" 
+                    ? "bg-primary text-white shadow-none" 
                     : "text-foreground/40 hover:bg-primary/5 hover:text-primary"
                 )}
               >
-                <item.icon className="w-6 h-6" />
+                <item.icon className="w-6 h-6 transition-transform group-hover:scale-105" />
                 {item.label}
               </button>
             ))}
@@ -1270,7 +1469,7 @@ export function AdminDashboard() {
           <div className="mt-8 p-4 border-t border-border mx-4 mb-4">
             <Dialog open={isNewRepairOpen} onOpenChange={setIsNewRepairOpen}>
               <DialogTrigger render={
-                <Button className="w-full bg-primary hover:bg-primary/90 text-white rounded-2xl h-14 font-bold shadow-xl shadow-primary/20 transition-all active:scale-95 group">
+                <Button className="w-full bg-primary hover:bg-primary/90 text-white rounded-3xl h-14 font-bold shadow-none transition-all active:scale-95 group">
                   <Plus className="w-6 h-6 mr-3 transition-transform group-hover:rotate-90" />
                   New Repair
                 </Button>
@@ -1335,9 +1534,14 @@ export function AdminDashboard() {
                           onChange={(e) => setNewRepair(prev => ({ ...prev, technicianId: e.target.value }))}
                         >
                           <option value="">Select Technician</option>
-                          {technicians.map(t => (
-                            <option key={t.id} value={t.id}>{t.name} ({t.specialization})</option>
-                          ))}
+                          {technicians.map(t => {
+                            const { status } = getTechnicianAvailabilityStatus(t);
+                            return (
+                              <option key={t.id} value={t.id}>
+                                {t.name} - {t.specialization} ({status})
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
                       <Input 
@@ -1351,12 +1555,24 @@ export function AdminDashboard() {
                         value={newRepair.customerNote}
                         onChange={(e) => setNewRepair(prev => ({ ...prev, customerNote: e.target.value }))}
                       />
-                      <Input 
-                        placeholder="Estimate ($)" 
-                        type="number"
-                        value={newRepair.estimate}
-                        onChange={(e) => setNewRepair(prev => ({ ...prev, estimate: e.target.value }))}
-                      />
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-primary tracking-widest ml-1">Labor / Service Fee ($)</label>
+                        <Input 
+                          placeholder="Labor Fee" 
+                          type="number"
+                          value={newRepair.estimate}
+                          onChange={(e) => setNewRepair(prev => ({ ...prev, estimate: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-center justify-between">
+                         <div className="flex flex-col">
+                           <span className="text-[10px] font-black uppercase tracking-widest text-primary">Parts + Labor</span>
+                           <span className="text-xs font-bold text-foreground/40">Grand Total</span>
+                         </div>
+                         <span className="text-2xl font-black text-primary">
+                           ${(newRepair.estimate || 0) + (newRepair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0)}
+                         </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1410,11 +1626,11 @@ export function AdminDashboard() {
                 <DialogFooter className="p-8 bg-card border-t border-border flex gap-4">
                   <Button variant="ghost" className="h-12 px-8 rounded-2xl font-bold" onClick={() => setIsNewRepairOpen(false)}>Cancel</Button>
                   <Button 
-                    className="bg-primary text-white rounded-2xl px-12 h-12 font-bold shadow-xl shadow-primary/20" 
+                    className="bg-primary text-white rounded-full px-12 h-12 font-bold shadow-none active:scale-95 transition-all" 
                     onClick={handleCreateRepair}
                     disabled={!newRepair.customerName || !newRepair.deviceModel}
                   >
-                    Generate Ticket
+                    Create Repair
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -1426,28 +1642,28 @@ export function AdminDashboard() {
       {/* Desktop Sidebar */}
       <aside className="w-64 border-r border-border bg-card hidden lg:flex flex-col">
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+          <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center">
             <LayoutDashboard className="text-white w-6 h-6" />
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-lg leading-tight">TechFix</span>
+            <span className="font-bold text-lg leading-tight tracking-tight">TechFix</span>
             <span className="text-[10px] text-primary font-black uppercase tracking-widest leading-tight">Admin OS</span>
           </div>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4">
+        <nav className="flex-1 px-4 space-y-1.5 mt-4">
           {sidebarItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300",
+                "w-full flex items-center gap-3 px-5 py-3.5 rounded-3xl text-sm font-bold transition-all duration-200",
                 activeTab === item.id 
-                  ? "bg-primary text-white shadow-xl shadow-primary/20 scale-105" 
+                  ? "bg-primary text-white shadow-none" 
                   : "text-foreground/40 hover:bg-primary/5 hover:text-primary"
               )}
             >
-              <item.icon className="w-5 h-5 transition-transform group-hover:scale-110" />
+              <item.icon className="w-5 h-5 transition-transform group-hover:scale-105" />
               {item.label}
             </button>
           ))}
@@ -1456,7 +1672,7 @@ export function AdminDashboard() {
         <div className="mt-auto p-4 border-t border-border mx-4 mb-4">
           <Dialog open={isNewRepairOpen} onOpenChange={setIsNewRepairOpen}>
             <DialogTrigger render={
-              <Button className="w-full bg-primary hover:bg-primary/90 text-white rounded-2xl h-14 font-bold shadow-xl shadow-primary/20 transition-all active:scale-95 group">
+              <Button className="w-full bg-primary hover:bg-primary/90 text-white rounded-3xl h-14 font-bold shadow-none transition-all active:scale-95 group">
                 <Plus className="w-6 h-6 mr-3 transition-transform group-hover:rotate-90" />
                 New Repair
               </Button>
@@ -1521,9 +1737,14 @@ export function AdminDashboard() {
                         onChange={(e) => setNewRepair(prev => ({ ...prev, technicianId: e.target.value }))}
                       >
                         <option value="">Select Technician</option>
-                        {technicians.map(t => (
-                          <option key={t.id} value={t.id}>{t.name} ({t.specialization})</option>
-                        ))}
+                        {technicians.map(t => {
+                          const { status } = getTechnicianAvailabilityStatus(t);
+                          return (
+                            <option key={t.id} value={t.id}>
+                              {t.name} - {t.specialization} ({status})
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                     <Input 
@@ -1537,12 +1758,24 @@ export function AdminDashboard() {
                       value={newRepair.customerNote}
                       onChange={(e) => setNewRepair(prev => ({ ...prev, customerNote: e.target.value }))}
                     />
-                    <Input 
-                      placeholder="Estimate ($)" 
-                      type="number"
-                      value={newRepair.estimate}
-                      onChange={(e) => setNewRepair(prev => ({ ...prev, estimate: e.target.value }))}
-                    />
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-primary tracking-widest ml-1">Labor / Service Fee ($)</label>
+                        <Input 
+                          placeholder="Labor Fee" 
+                          type="number"
+                          value={newRepair.estimate}
+                          onChange={(e) => setNewRepair(prev => ({ ...prev, estimate: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-center justify-between">
+                         <div className="flex flex-col">
+                           <span className="text-[10px] font-black uppercase tracking-widest text-primary">Parts + Labor</span>
+                           <span className="text-xs font-bold text-foreground/40">Grand Total</span>
+                         </div>
+                         <span className="text-2xl font-black text-primary">
+                           ${(newRepair.estimate || 0) + (newRepair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0)}
+                         </span>
+                      </div>
                   </div>
                 </div>
 
@@ -1594,13 +1827,13 @@ export function AdminDashboard() {
                 </div>
               </div>
               <DialogFooter className="p-8 bg-card border-t border-border flex gap-4">
-                <Button variant="ghost" className="h-12 px-8 rounded-2xl font-bold" onClick={() => setIsNewRepairOpen(false)}>Cancel</Button>
+                <Button variant="ghost" className="h-12 px-8 rounded-full font-bold" onClick={() => setIsNewRepairOpen(false)}>Cancel</Button>
                 <Button 
-                  className="bg-primary text-white rounded-2xl px-12 h-12 font-bold shadow-xl shadow-primary/20" 
+                  className="bg-primary text-white rounded-full px-12 h-12 font-bold transition-all active:scale-95" 
                   onClick={handleCreateRepair}
                   disabled={!newRepair.customerName || !newRepair.deviceModel}
                 >
-                  Generate Ticket
+                  Create Repair
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1613,37 +1846,33 @@ export function AdminDashboard() {
         {/* Header */}
         <header className="h-20 border-b border-border bg-card/50 backdrop-blur-xl flex items-center justify-between px-4 md:px-10">
           <div className="flex items-center gap-4 flex-1 max-w-xl">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="lg:hidden h-10 w-10 text-foreground/40"
-              onClick={() => setIsMobileMenuOpen(true)}
-            >
-              <Menu className="w-6 h-6" />
-            </Button>
+            {/* Mobile Logo Container */}
+            <div className="lg:hidden w-10 h-10 rounded-2xl bg-primary flex items-center justify-center">
+              <LayoutDashboard className="text-white w-6 h-6" />
+            </div>
             <div className="relative w-full group hidden sm:block">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/20 group-focus-within:text-primary transition-colors" />
               <Input 
-                placeholder="Global search..." 
-                className="pl-12 bg-background border-border focus-visible:ring-primary h-12 rounded-2xl transition-all shadow-sm"
+                placeholder="Search everything..." 
+                className="pl-12 bg-secondary/50 border-transparent focus:bg-white focus:border-primary/20 focus-visible:ring-0 h-12 rounded-full transition-all"
               />
             </div>
             {/* Mobile Brand Label */}
             <div className="lg:hidden font-black text-lg tracking-tighter truncate sm:hidden">TechFix</div>
           </div>
 
-          <div className="flex items-center gap-3 md:gap-6">
-            <Button variant="ghost" size="icon" className="relative touch-target text-foreground/40 hover:text-primary transition-colors hidden md:flex">
+          <div className="flex items-center gap-3 md:gap-4">
+            <Button variant="ghost" size="icon" className="relative touch-target text-foreground/40 hover:text-primary hover:bg-primary/5 transition-all rounded-full hidden md:flex">
               <Bell className="w-6 h-6" />
-              <span className="absolute top-3 right-3 w-3 h-3 bg-primary rounded-full border-2 border-card animate-bounce" />
+              <span className="absolute top-2.5 right-2.5 w-3 h-3 bg-primary rounded-full border-2 border-white" />
             </Button>
             
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button variant="ghost" className="h-10 md:h-12 bg-card border border-border px-3 rounded-2xl flex items-center gap-3 hover:bg-primary/5 transition-all group">
-                      <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform overflow-hidden font-sans">
+                    <Button variant="ghost" className="h-10 md:h-12 bg-white border border-border px-3 rounded-full flex items-center gap-3 hover:bg-primary/5 transition-all group">
+                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-bold text-xs group-hover:scale-105 transition-transform overflow-hidden font-sans">
                         {user.photoURL ? (
                           <img src={user.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
@@ -1651,21 +1880,23 @@ export function AdminDashboard() {
                         )}
                       </div>
                       <div className="hidden md:flex flex-col text-left font-sans">
-                        <span className="text-xs font-bold leading-tight uppercase tracking-tight">{user.displayName || "Admin Account"}</span>
-                        <span className="text-[10px] text-primary font-black uppercase tracking-widest leading-tight">Master Access</span>
+                        <span className="text-[11px] font-bold leading-tight tracking-tight">{user.displayName || "Admin Account"}</span>
+                        <span className="text-[9px] text-primary font-black uppercase tracking-widest leading-tight">Master</span>
                       </div>
                     </Button>
                   }
                 />
-                <DropdownMenuContent align="end" className="w-56 bg-card border-border p-2 rounded-2xl shadow-2xl font-sans mt-2">
-                  <DropdownMenuLabel className="p-4 bg-primary/5 rounded-xl mb-2">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-bold leading-none">{user.displayName || "Admin Account"}</p>
-                      <p className="text-[10px] leading-none text-muted-foreground font-mono truncate">{user.email}</p>
-                    </div>
-                  </DropdownMenuLabel>
+                <DropdownMenuContent align="end" className="w-64 bg-card border-border p-2 rounded-3xl shadow-none border font-sans mt-2">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="p-4 bg-muted/50 rounded-2xl mb-2">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-bold leading-none">{user.displayName || "Admin Account"}</p>
+                        <p className="text-[10px] leading-none text-muted-foreground font-mono truncate">{user.email}</p>
+                      </div>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator className="bg-border/50" />
-                  <DropdownMenuItem className="p-3 rounded-xl focus:bg-primary/5 cursor-pointer text-destructive focus:text-destructive group" onClick={logout}>
+                  <DropdownMenuItem className="p-3 rounded-2xl focus:bg-destructive/5 cursor-pointer text-destructive focus:text-destructive group" onClick={logout}>
                     <LogOut className="mr-3 h-4 w-4 transition-transform group-hover:scale-110" />
                     <span className="font-bold">Sign Out</span>
                   </DropdownMenuItem>
@@ -1717,11 +1948,76 @@ export function AdminDashboard() {
                       onChange={(e) => setNewTechnician(prev => ({ ...prev, password: e.target.value }))}
                     />
                   </div>
+
+                  <div className="space-y-4 pt-4 border-t border-border">
+                    <label className="text-[10px] font-black uppercase text-primary tracking-[0.2em] block mb-2">Availability</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Start Time</label>
+                        <Input 
+                          type="time"
+                          className="h-12 rounded-2xl font-bold"
+                          value={newTechnician.availability?.workingHours?.start || "09:00"}
+                          onChange={(e) => setNewTechnician(prev => ({
+                            ...prev,
+                            availability: {
+                              ...prev.availability,
+                              workingHours: { ...prev.availability.workingHours, start: e.target.value }
+                            }
+                          }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">End Time</label>
+                        <Input 
+                          type="time"
+                          className="h-12 rounded-2xl font-bold"
+                          value={newTechnician.availability?.workingHours?.end || "17:00"}
+                          onChange={(e) => setNewTechnician(prev => ({
+                            ...prev,
+                            availability: {
+                              ...prev.availability,
+                              workingHours: { ...prev.availability.workingHours, end: e.target.value }
+                            }
+                          }))}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Days Off</label>
+                      <div className="flex flex-wrap gap-2">
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
+                          <button
+                            key={day}
+                            type="button"
+                            className={cn(
+                              "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border",
+                              (newTechnician.availability?.daysOff || []).includes(day)
+                                ? "bg-red-500/10 border-red-500 text-red-500"
+                                : "bg-muted border-transparent text-foreground/40 hover:border-foreground/20"
+                            )}
+                            onClick={() => {
+                              const daysOff = (newTechnician.availability?.daysOff || []).includes(day)
+                                ? newTechnician.availability.daysOff.filter(d => d !== day)
+                                : [...(newTechnician.availability?.daysOff || []), day];
+                              setNewTechnician(prev => ({
+                                ...prev,
+                                availability: { ...prev.availability, daysOff }
+                              }));
+                            }}
+                          >
+                            {day.slice(0, 3)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <DialogFooter className="p-8 bg-card border-t border-border flex gap-4">
                   <Button variant="ghost" className="h-12 rounded-2xl font-bold flex-1" onClick={() => setIsNewTechnicianOpen(false)}>Cancel</Button>
                   <Button 
-                    className="bg-primary text-white rounded-2xl h-12 font-bold flex-1 shadow-xl shadow-primary/20" 
+                    className="bg-primary text-white rounded-full h-12 font-bold flex-1 shadow-none active:scale-95 transition-all" 
                     onClick={handleCreateTechnician}
                     disabled={!newTechnician.name || !newTechnician.email || !newTechnician.password}
                   >
@@ -1792,6 +2088,71 @@ export function AdminDashboard() {
                           onChange={(e) => setEditingTechnician((prev: any) => ({ ...prev, password: e.target.value }))}
                         />
                       </div>
+
+                      <div className="space-y-4 pt-4 border-t border-border">
+                        <label className="text-[10px] font-black uppercase text-primary tracking-[0.2em] block mb-2">Availability Schedule</label>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Start Time</label>
+                            <Input 
+                              type="time"
+                              className="h-12 rounded-2xl font-bold"
+                              value={editingTechnician.availability?.workingHours?.start || "09:00"}
+                              onChange={(e) => setEditingTechnician((prev: any) => ({
+                                ...prev,
+                                availability: {
+                                  ...prev.availability,
+                                  workingHours: { ...(prev.availability?.workingHours || {}), start: e.target.value }
+                                }
+                              }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">End Time</label>
+                            <Input 
+                              type="time"
+                              className="h-12 rounded-2xl font-bold"
+                              value={editingTechnician.availability?.workingHours?.end || "17:00"}
+                              onChange={(e) => setEditingTechnician((prev: any) => ({
+                                ...prev,
+                                availability: {
+                                  ...prev.availability,
+                                  workingHours: { ...(prev.availability?.workingHours || {}), end: e.target.value }
+                                }
+                              }))}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Days Off</label>
+                          <div className="flex flex-wrap gap-2">
+                            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
+                              <button
+                                key={day}
+                                type="button"
+                                className={cn(
+                                  "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border",
+                                  (editingTechnician.availability?.daysOff || []).includes(day)
+                                    ? "bg-red-500/10 border-red-500 text-red-500"
+                                    : "bg-muted border-transparent text-foreground/40 hover:border-foreground/20"
+                                )}
+                                onClick={() => {
+                                  const daysOff = (editingTechnician.availability?.daysOff || []).includes(day)
+                                    ? editingTechnician.availability.daysOff.filter((d: string) => d !== day)
+                                    : [...(editingTechnician.availability?.daysOff || []), day];
+                                  setEditingTechnician((prev: any) => ({
+                                    ...prev,
+                                    availability: { ...(prev.availability || {}), daysOff }
+                                  }));
+                                }}
+                              >
+                                {day.slice(0, 3)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <DialogFooter className="p-8 bg-card border-t border-border flex gap-4">
                       <Button variant="ghost" className="h-12 rounded-2xl font-bold flex-1" onClick={() => setIsEditTechnicianOpen(false)}>Cancel</Button>
@@ -1808,96 +2169,106 @@ export function AdminDashboard() {
             </Dialog>
 
             <Dialog open={isEditRepairOpen} onOpenChange={setIsEditRepairOpen}>
-              <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-6xl w-full bg-card border-border p-0 overflow-hidden rounded-3xl">
+              <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-5xl w-full bg-card border-border p-0 overflow-hidden rounded-3xl">
                 {editingRepair && (
                   <>
-                    <DialogHeader className="p-6 md:p-10 bg-primary/5 border-b border-primary/10">
-                      <DialogTitle className="text-xl md:text-3xl font-bold flex items-center gap-3">
-                        <Edit className="w-6 h-6 md:w-8 md:h-8 text-primary" /> Edit Repair Ticket
+                    <DialogHeader className="p-6 md:p-8 bg-primary/5 border-b border-primary/10">
+                      <DialogTitle className="text-xl md:text-2xl font-black flex items-center gap-3">
+                        <Edit className="w-5 h-5 md:w-6 md:h-6 text-primary" /> Edit Repair Ticket
                       </DialogTitle>
-                      <DialogDescription className="text-sm md:text-lg font-medium text-foreground/40 mt-2">
-                        Update status, technician, parts, and repair details.
+                      <DialogDescription className="text-xs md:text-sm font-medium text-foreground/40 mt-1">
+                        Update status, tech, parts, and billing details.
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="p-6 md:p-10 grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 overflow-y-auto max-h-[80vh]">
-                      <div className="space-y-8">
-                        <div className="space-y-6">
-                          <h4 className="text-sm font-black uppercase text-primary tracking-[0.2em]">Core Information</h4>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-foreground/40 uppercase ml-1 tracking-wider">Repair Status</label>
-                            <select 
-                              className="w-full bg-background border border-input rounded-2xl h-12 px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 appearance-none shadow-sm"
-                              value={editingRepair.status}
-                              onChange={(e) => setEditingRepair(prev => ({ ...prev, status: e.target.value }))}
-                            >
-                              <option value="Received">Received</option>
-                              <option value="In Progress">In Progress</option>
-                              <option value="Waiting for Parts">Waiting for Parts</option>
-                              <option value="Ready for Pickup">Ready for Pickup</option>
-                              <option value="Completed">Completed</option>
-                              <option value="Cancelled">Cancelled</option>
-                            </select>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-foreground/40 uppercase ml-1 tracking-wider">Assigned Technician</label>
-                            <select 
-                              className="w-full bg-background border border-input rounded-2xl h-12 px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 appearance-none shadow-sm"
-                              value={editingRepair.technicianId || ""}
-                              onChange={(e) => setEditingRepair(prev => ({ ...prev, technicianId: e.target.value }))}
-                            >
-                              <option value="">Unassigned</option>
-                              {technicians.map(t => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                              ))}
-                            </select>
+                    <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 overflow-y-auto max-h-[75vh]">
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                          <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em]">Assignment & Status</h4>
+                          <div className="grid grid-cols-1 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Repair Status</label>
+                              <select 
+                                className="w-full bg-background border border-border rounded-xl h-10 px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 appearance-none shadow-sm"
+                                value={editingRepair.status}
+                                onChange={(e) => setEditingRepair(prev => ({ ...prev, status: e.target.value }))}
+                              >
+                                <option value="Received">Received</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Waiting for Parts">Waiting for Parts</option>
+                                <option value="Ready for Pickup">Ready for Pickup</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Technician</label>
+                              <select 
+                                className="w-full bg-background border border-border rounded-xl h-10 px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 appearance-none shadow-sm"
+                                value={editingRepair.technicianId || ""}
+                                onChange={(e) => setEditingRepair(prev => ({ ...prev, technicianId: e.target.value }))}
+                              >
+                                <option value="">Unassigned</option>
+                                {technicians.map(t => {
+                                  const { status } = getTechnicianAvailabilityStatus(t);
+                                  return (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name} ({status})
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
                           </div>
                         </div>
-                        <div className="space-y-6">
-                          <h4 className="text-sm font-black uppercase text-primary tracking-[0.2em]">Device Specs</h4>
-                          <Input 
-                            placeholder="Device Model" 
-                            className="h-12 rounded-2xl font-bold"
-                            value={editingRepair.deviceModel}
-                            onChange={(e) => setEditingRepair(prev => ({ ...prev, deviceModel: e.target.value }))}
-                          />
-                          <Input 
-                            placeholder="Serial Number (SN)" 
-                            className="h-12 rounded-2xl font-bold"
-                            value={editingRepair.serialNumber || ""}
-                            onChange={(e) => setEditingRepair(prev => ({ ...prev, serialNumber: e.target.value }))}
-                          />
+
+                        <div className="space-y-4">
+                          <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em]">Device Specs</h4>
+                          <div className="space-y-3">
+                            <Input 
+                              placeholder="Device Model" 
+                              className="h-10 rounded-xl font-bold text-xs"
+                              value={editingRepair.deviceModel}
+                              onChange={(e) => setEditingRepair(prev => ({ ...prev, deviceModel: e.target.value }))}
+                            />
+                            <Input 
+                              placeholder="Serial Number (SN)" 
+                              className="h-10 rounded-xl font-bold text-xs"
+                              value={editingRepair.serialNumber || ""}
+                              onChange={(e) => setEditingRepair(prev => ({ ...prev, serialNumber: e.target.value }))}
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <div className="space-y-8">
-                        <div className="space-y-6">
-                           <h4 className="text-sm font-black uppercase text-primary tracking-[0.2em]">Progress Notes</h4>
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                           <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em]">Work Progress</h4>
                            <textarea 
-                            className="w-full bg-background border border-input rounded-2xl p-5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 min-h-[120px] shadow-sm"
+                            className="w-full bg-background border border-border rounded-xl p-4 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20 min-h-[100px] shadow-sm"
                             placeholder="Issue & Work Done" 
                             value={editingRepair.issueDescription}
                             onChange={(e) => setEditingRepair(prev => ({ ...prev, issueDescription: e.target.value }))}
                           />
                           <textarea 
-                            className="w-full bg-background border border-input rounded-2xl p-5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/20 min-h-[100px] shadow-sm"
-                            placeholder="Customer / Admin Notes"
+                            className="w-full bg-background border border-border rounded-xl p-4 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20 min-h-[80px] shadow-sm"
+                            placeholder="Internal Notes"
                             value={editingRepair.customerNote || ""}
                             onChange={(e) => setEditingRepair(prev => ({ ...prev, customerNote: e.target.value }))}
                           />
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <label className="text-xs font-bold text-foreground/40 uppercase ml-1">Est ($)</label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-primary tracking-widest ml-1">Labor Fee ($)</label>
                               <Input 
                                 type="number"
-                                className="h-12 rounded-2xl font-bold"
+                                className="h-10 rounded-xl font-bold text-xs"
                                 value={editingRepair.estimate}
-                                onChange={(e) => setEditingRepair(prev => ({ ...prev, estimate: e.target.value }))}
+                                onChange={(e) => setEditingRepair(prev => ({ ...prev, estimate: Number(e.target.value) }))}
                               />
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-xs font-bold text-foreground/40 uppercase ml-1">Priority</label>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-foreground/40 uppercase ml-1">Priority</label>
                               <select 
-                                className="w-full bg-background border border-input rounded-2xl h-12 px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20 appearance-none shadow-sm"
+                                className="w-full bg-background border border-border rounded-xl h-10 px-3 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 appearance-none shadow-sm"
                                 value={editingRepair.priority}
                                 onChange={(e) => setEditingRepair(prev => ({ ...prev, priority: e.target.value }))}
                               >
@@ -1911,57 +2282,78 @@ export function AdminDashboard() {
                         </div>
                       </div>
 
-                      <div className="space-y-8">
-                        <h4 className="text-sm font-black uppercase text-primary tracking-[0.2em]">Repair Parts</h4>
-                        <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                           {(editingRepair.items || []).length === 0 ? (
-                             <div className="flex flex-col items-center justify-center py-8 bg-muted/30 rounded-2xl border border-dashed border-border">
-                               <Package className="w-8 h-8 text-foreground/10 mb-2" />
-                               <p className="text-xs text-foreground/30 italic">No parts attached.</p>
-                             </div>
-                           ) : (
-                             (editingRepair.items || []).map((item: any) => (
-                               <div key={item.id} className="flex items-center justify-between bg-muted/50 p-4 rounded-2xl group border border-transparent hover:border-primary/20 transition-all">
-                                 <div>
-                                   <p className="text-sm font-bold">{item.name}</p>
-                                   <p className="text-xs text-primary font-bold">${item.price}</p>
-                                 </div>
-                                 <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => removeItemFromRepair(item.id, true)}
-                                 >
-                                   <Trash2 className="w-4 h-4" />
-                                 </Button>
-                               </div>
-                             ))
-                           )}
-                        </div>
+                      <div className="space-y-6">
                         <div className="space-y-4">
-                          <p className="text-xs font-black text-foreground/40 uppercase tracking-widest pl-1">Inventory Access</p>
-                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                            {inventory.map(item => (
-                               <button 
-                                key={item.id}
-                                className="w-full text-left p-4 rounded-2xl hover:bg-primary/5 text-sm flex items-center justify-between border border-border/50 hover:border-primary/20 transition-all group"
-                                onClick={() => addItemToRepair(item, true)}
-                               >
-                                 <div className="flex flex-col">
-                                   <span className="font-bold group-hover:text-primary transition-colors">{item.name}</span>
-                                   <span className="text-[10px] text-foreground/40 font-mono">Stock: {item.stock} | ${item.price}</span>
+                          <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em]">Parts & Billing</h4>
+                          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+                             {(editingRepair.items || []).length === 0 ? (
+                               <div className="flex flex-col items-center justify-center py-6 bg-muted/20 rounded-xl border border-dashed border-border">
+                                 <p className="text-[10px] text-foreground/30 italic">No parts attached.</p>
+                               </div>
+                             ) : (
+                               (editingRepair.items || []).map((item: any) => (
+                                 <div key={item.id} className="flex items-center justify-between bg-muted/40 p-3 rounded-xl group border border-transparent hover:border-primary/20 transition-all">
+                                   <div>
+                                     <p className="text-xs font-bold">{item.name}</p>
+                                     <p className="text-[10px] text-primary font-black">${item.price}</p>
+                                   </div>
+                                   <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => removeItemFromRepair(item.id, true)}
+                                   >
+                                     <Trash2 className="w-3.5 h-3.5" />
+                                   </Button>
                                  </div>
-                                 <Plus className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-all" />
-                               </button>
-                            ))}
+                               ))
+                             )}
+                          </div>
+                          
+                          <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                             <div className="flex items-center justify-between mb-1">
+                               <span className="text-[10px] font-black uppercase tracking-widest text-primary">Grand Total</span>
+                               <span className="text-xl font-black text-primary">
+                                 ${Number(editingRepair.estimate || 0) + (editingRepair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0)}
+                               </span>
+                             </div>
+                             <p className="text-[10px] text-foreground/40 font-bold italic">Parts + Service Fee</p>
+                          </div>
+
+                          <div className="space-y-2">
+                             <p className="text-[10px] font-black text-foreground/40 uppercase tracking-widest pl-1">Add Inventory</p>
+                             <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
+                               {inventory.map(item => (
+                                  <button 
+                                   key={item.id}
+                                   className="w-full text-left p-3 rounded-xl hover:bg-primary/5 text-xs flex items-center justify-between border border-border hover:border-primary/20 transition-all group"
+                                   onClick={() => addItemToRepair(item, true)}
+                                  >
+                                    <div className="flex flex-col">
+                                      <span className="font-bold group-hover:text-primary transition-colors">{item.name}</span>
+                                      <span className="text-[9px] text-foreground/40 font-mono">Stock: {item.stock} | ${item.price}</span>
+                                    </div>
+                                    <Plus className="w-3 h-3 text-primary" />
+                                  </button>
+                               ))}
+                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                    <DialogFooter className="p-8 bg-card border-t border-border flex gap-4">
-                      <Button variant="ghost" className="h-12 px-8 rounded-2xl font-bold" onClick={() => setIsEditRepairOpen(false)}>Cancel</Button>
+                    <DialogFooter className="p-6 bg-card border-t border-border flex gap-3">
+                      <Button variant="ghost" className="h-11 px-6 rounded-xl font-bold flex-1" onClick={() => setIsEditRepairOpen(false)}>Cancel</Button>
+                      {editingRepair.status === "Completed" && (
+                        <Button 
+                          variant="outline" 
+                          className="h-11 px-6 rounded-xl font-bold border-2 border-blue-500 text-blue-500 hover:bg-blue-50 flex-1 flex items-center justify-center gap-2"
+                          onClick={() => generateInvoice(editingRepair)}
+                        >
+                          <FileText className="w-4 h-4" /> Invoice
+                        </Button>
+                      )}
                       <Button 
-                        className="bg-primary text-white rounded-2xl px-12 h-12 font-bold shadow-xl shadow-primary/20" 
+                        className="bg-primary text-white rounded-xl h-11 font-bold flex-[2] shadow-lg shadow-primary/10 active:scale-95 transition-all" 
                         onClick={handleUpdateRepair}
                       >
                         Push Changes
@@ -2024,14 +2416,14 @@ export function AdminDashboard() {
           <DialogFooter className="mt-10 flex gap-4">
             <Button 
               variant="secondary" 
-              className="flex-1 h-12 rounded-2xl font-bold bg-secondary/50 hover:bg-secondary text-foreground/60 transition-all"
+              className="flex-1 h-12 rounded-full font-bold bg-secondary/50 hover:bg-secondary text-foreground/60 transition-all"
               onClick={() => setDeleteConfirm(prev => ({ ...prev, open: false }))}
             >
               Cancel
             </Button>
             <Button 
               variant="destructive" 
-              className="flex-1 h-12 rounded-2xl font-bold shadow-xl shadow-destructive/20 active:scale-95 transition-all"
+              className="flex-1 h-12 rounded-full font-bold shadow-none active:scale-95 transition-all"
               onClick={handleDelete}
             >
               Delete
@@ -2039,6 +2431,205 @@ export function AdminDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* View Repair Details Dialog */}
+      <Dialog open={isViewRepairOpen} onOpenChange={setIsViewRepairOpen}>
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] lg:max-w-5xl w-full bg-card border-border p-0 overflow-hidden rounded-3xl">
+          {viewingRepair && (
+            <>
+              <DialogHeader className="p-6 md:p-10 bg-primary/5 border-b border-primary/10">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                       <span className="text-xs font-black uppercase text-primary tracking-widest px-2 py-1 bg-primary/10 rounded-lg">Ticket ID</span>
+                       <span className="text-xl font-mono font-bold tracking-tighter">TF-{viewingRepair.id.slice(0, 8).toUpperCase()}</span>
+                    </div>
+                    <DialogTitle className="text-2xl md:text-4xl font-black tracking-tight">{viewingRepair.deviceModel}</DialogTitle>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className={cn(
+                      "rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider h-fit",
+                      viewingRepair.status === "Received" && "border-blue-500 text-blue-500 bg-blue-500/10",
+                      viewingRepair.status === "In Progress" && "border-amber-500 text-amber-500 bg-amber-500/10",
+                      viewingRepair.status === "Ready for Pickup" && "border-primary text-primary bg-primary/10",
+                      viewingRepair.status === "Completed" && "border-green-500 text-green-500 bg-green-500/10",
+                    )}>
+                      {viewingRepair.status}
+                    </Badge>
+                    <div className="flex items-center gap-2 px-4 py-1.5 bg-muted rounded-full">
+                      <AlertCircle className={cn(
+                        "w-4 h-4",
+                        viewingRepair.priority === "Urgent" ? "text-red-600 animate-pulse" : "text-foreground/40"
+                      )} />
+                      <span className="text-xs font-bold uppercase tracking-widest">{viewingRepair.priority}</span>
+                    </div>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="p-6 md:p-10 grid grid-cols-1 md:grid-cols-3 gap-10 overflow-y-auto max-h-[70vh]">
+                {/* Section: Customer */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 pb-2 border-b border-border">
+                    <Users className="w-5 h-5 text-primary" />
+                    <h4 className="text-sm font-black uppercase tracking-widest">Customer Details</h4>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">Full Name</span>
+                      <p className="font-bold text-lg">{viewingRepair.customerName}</p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">Contact Number</span>
+                      <div className="flex items-center gap-2 group">
+                        <Phone className="w-4 h-4 text-primary" />
+                        <p className="font-bold font-mono">{viewingRepair.customerPhone}</p>
+                      </div>
+                    </div>
+                    {viewingRepair.customerNote && (
+                      <div className="p-4 bg-muted/30 rounded-2xl border border-border">
+                        <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest block mb-2">Customer Note</span>
+                        <p className="text-sm font-medium italic text-foreground/60 leading-relaxed">"{viewingRepair.customerNote}"</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section: Device */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 pb-2 border-b border-border">
+                    <Info className="w-5 h-5 text-primary" />
+                    <h4 className="text-sm font-black uppercase tracking-widest">Technical Info</h4>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest">Serial / IMEI</span>
+                      <p className="font-mono font-bold text-foreground/70">{viewingRepair.serialNumber || "Not Specified"}</p>
+                    </div>
+                    <div className="flex flex-col gap-1 p-5 bg-background border border-border rounded-2xl shadow-sm">
+                      <span className="text-[10px] font-black text-primary uppercase tracking-widest mb-2">Internal Report / Issue</span>
+                      <p className="text-sm font-medium leading-relaxed">{viewingRepair.issueDescription}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Timeline & Parts */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 pb-2 border-b border-border">
+                    <Wrench className="w-5 h-5 text-primary" />
+                    <h4 className="text-sm font-black uppercase tracking-widest">Repair Log</h4>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-foreground/40">Technician:</span>
+                      <div className="flex items-center gap-2">
+                         <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                           <User className="w-3 h-3 text-primary" />
+                         </div>
+                         <span className="font-bold">{technicians.find(t => t.id === viewingRepair.technicianId)?.name || "Unassigned"}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-foreground/40">Registered:</span>
+                      <div className="flex items-center gap-2">
+                         <Calendar className="w-4 h-4 text-foreground/20" />
+                         <span className="font-bold text-foreground/60">{viewingRepair.createdAt ? new Date(viewingRepair.createdAt.seconds * 1000).toLocaleDateString() : "Snapshot"}</span>
+                      </div>
+                    </div>
+                    <div className="pt-4 space-y-3">
+                      <span className="text-[10px] font-black text-foreground/30 uppercase tracking-widest block">Financial Summary</span>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs p-3 bg-muted/30 rounded-xl">
+                          <span className="font-bold text-foreground/40 italic">Service/Labor Fee</span>
+                          <span className="font-bold">${viewingRepair.estimate || 0}</span>
+                        </div>
+                        
+                        {(viewingRepair.items || []).length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest pl-3">Parts</span>
+                            {(viewingRepair.items || []).map((item: any) => (
+                              <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl border border-border/50">
+                                <span className="text-xs font-bold truncate">{item.name}</span>
+                                <span className="text-xs font-black text-primary">${item.price}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="pt-4 flex flex-col gap-2 border-t border-border mt-2">
+                           <div className="flex items-center justify-between px-3">
+                             <span className="text-[10px] font-black uppercase text-foreground/30 tracking-widest">Parts Total</span>
+                             <span className="text-sm font-bold">${(viewingRepair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0)}</span>
+                           </div>
+                           <div className="flex items-center justify-between px-3 py-4 bg-primary/5 rounded-2xl border border-primary/10">
+                             <span className="font-black text-xs uppercase tracking-widest text-primary">Grand Total</span>
+                             <span className="text-2xl font-black text-primary">
+                               ${(viewingRepair.estimate || 0) + (viewingRepair.items || []).reduce((acc: number, item: any) => acc + (item.price || 0), 0)}
+                             </span>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="p-8 bg-muted/20 border-t border-border flex flex-col md:flex-row gap-4">
+                <Button 
+                  variant="secondary" 
+                  className="h-14 flex-1 rounded-2xl font-bold bg-white border-2 border-border/50 hover:bg-muted transition-all active:scale-95"
+                  onClick={() => setIsViewRepairOpen(false)}
+                >
+                  Close Details
+                </Button>
+                {viewingRepair.status === "Completed" && (
+                  <Button 
+                    variant="outline" 
+                    className="h-14 flex-1 rounded-2xl font-bold border-2 border-blue-500 text-blue-500 hover:bg-blue-50 transition-all active:scale-95 flex items-center justify-center gap-3"
+                    onClick={() => generateInvoice(viewingRepair)}
+                  >
+                    <FileText className="w-5 h-5" /> Invoice
+                  </Button>
+                )}
+                <Button 
+                  className="h-14 flex-1 rounded-2xl font-bold bg-primary text-white shadow-xl shadow-primary/20 transition-all active:scale-95 flex items-center justify-center gap-3"
+                  onClick={() => {
+                    setIsViewRepairOpen(false);
+                    triggerEditRepair(viewingRepair);
+                  }}
+                >
+                  <Edit className="w-5 h-5" /> Edit Ticket
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mobile Bottom Navigation & FAB */}
+      <div className="bottom-nav">
+        {sidebarItems.slice(0, 5).map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={cn(
+              "nav-item-mobile",
+              activeTab === item.id ? "text-primary scale-110" : "text-foreground/30"
+            )}
+          >
+            <item.icon className={cn("w-6 h-6", activeTab === item.id ? "fill-primary/10" : "")} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* FAB - Mobile Only */}
+      <Button
+        className="fixed bottom-24 right-6 w-16 h-16 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 lg:hidden z-50 transition-transform active:scale-90"
+        onClick={() => setIsNewRepairOpen(true)}
+      >
+        <Plus className="w-8 h-8" />
+      </Button>
     </div>
   );
 }

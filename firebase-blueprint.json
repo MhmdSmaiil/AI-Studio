@@ -71,6 +71,22 @@
         "specialization": { "type": "string" },
         "role": { "type": "string", "enum": ["technician"] },
         "active": { "type": "boolean" },
+        "availability": {
+          "type": "object",
+          "properties": {
+            "workingHours": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "string" },
+                "end": { "type": "string" }
+              }
+            },
+            "daysOff": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "email", "role"]
